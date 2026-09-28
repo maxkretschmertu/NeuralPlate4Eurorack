@@ -24,7 +24,7 @@ params = {
     "alpha_r": 4e-5,        # damping tilt (higher f are damped stronger)
 
     "tau": 1.0,             # nonlinearity threshold (higher means less nonlinearities)
-    "eta": 0.01,            # mode coupling
+    "eta": 0.01,            # nonlinearity transfer efficiency
     "lamb": 0.01,           # nonlinearity coupling strength
 
     "D": 18300.0,           # Material Parameters
@@ -364,8 +364,8 @@ add_slider("Damping", "alpha_g", 0.0000000001, 5.0)
 add_slider("Damping Tilt", "alpha_r", 0.0001, 0.01)
 
 add_slider("NonLin Threshold Tau", "tau", 0.0001, 2.0)
-add_slider("NonLin Odd Coupling Strength Eta", "eta", 0.0, 0.8)
-add_slider("NonLin Coupling StrengthLambda", "lamb", 0.0001, 1)
+add_slider("NonLin Transfer Efficiency Eta", "eta", 0.0, 0.8)
+add_slider("NonLin Coupling Strength Lambda", "lamb", 0.0001, 1)
 
 add_slider("Excitation Length", "N_ex", 2, 192, False)
 add_slider("Excitation Gain", "A", 0.0, 2.0, False)
