@@ -1,6 +1,8 @@
 # NeuralPlate4Eurorack
 
-Real-time nonlinear plate resonator based on modal synthesis, FEM-generated training data, and a neural network model.
+Real-time nonlinear plate resonator based on modal synthesis, FEM-generated training data, and a neural network model. 
+While the goal was to stay close to real-life plate sounds, this project is mainly intended as a musical instrument. 
+Therefore certain decisions may favor generation of interesting sounds instead of accurate reproduction.
 
 The project combines:
 
