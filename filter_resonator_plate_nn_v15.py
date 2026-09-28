@@ -11,22 +11,43 @@ from tkinter import ttk
 from neural.model import PlateNet
 from neural.shapes import make_morph_contour
 
-fs = 48000.0
-n_Modes = 256
-MAX_STATE_MAG = 10.0
+fs = 48000.0                # samplerate
+n_Modes = 256               # max. number of modes
+MAX_STATE_MAG = 10.0        # used to clamp mag to avoid exploding nonlineary modecpouling
 
 params = {
-    "alpha_g": 0.3322, "alpha_r": 4e-5,
-    "tau": 1.0, "eta": 0.01, "lamb": 0.01, "modes": 256,
-    "size": 1.0, "aspect": 1.0, "morph": 0.0,
-    "D": 18300.0, "rho": 7800.0, "H": 0.01,
-    "x_e": -0.3, "y_e": 0.3,
-    "x_l": 0.3, "y_l": 0.3,
-    "x_r": 0.3, "y_r": 0.3,
-    "N_ex": 192, "A": 0.5,
-    "impact_start": None, "changed": False,
+    "size": 1.0,            # determines size/tune of plate
+    "aspect": 1.0,          # aspect ratio of plate (0.5-4.0 (only for the 256 modes model, otherwise 0.5-2.0))
+    "morph": 0.0,           # morphs between square, circle, triangle
+
+    "alpha_g": 0.3322,      # damping factor
+    "alpha_r": 4e-5,        # damping tilt (higher f are damped stronger)
+
+    "tau": 1.0,             # nonlinearity threshold (higher means less nonlinearities)
+    "eta": 0.01,            # mode coupling
+    "lamb": 0.01,           # nonlinearity coupling strength
+
+    "D": 18300.0,           # Material Parameters
+    "rho": 7800.0, 
+    "H": 0.01,
+
+    "modes": 256,           # nubmer of modes in use
+
+    "N_ex": 192,            # excitation signal length (hard/softer strike)
+    "A": 0.5,               # excitation signal gain
+
+    "x_e": -0.3,            # excitation and pickup positions 
+    "y_e": 0.3,
+    "x_l": 0.3, 
+    "y_l": 0.3,
+    "x_r": 0.3, 
+    "y_r": 0.3,
+
+    "impact_start": None,   # start sample of last strike
+    "changed": False,       # flag to show parameter change
 }
 
+# create PlateNet model and load trained weights from saved model
 plate_net = PlateNet(n_modes=n_Modes)
 plate_net.load_state_dict(torch.load(
     Path(__file__).parent / "models" / "plate_nn.pt",
@@ -34,6 +55,8 @@ plate_net.load_state_dict(torch.load(
 ))
 plate_net.eval()
 
+# predict frequency factors and gains for strike and pickups from model, convert into physical frequencies
+# using material properties and size and ouptut frequencies/gains for strike and right/left pickups
 @torch.no_grad()
 def plate_model():
     geometry = torch.tensor([[params["morph"], params["aspect"]]], dtype=torch.float32)
@@ -49,10 +72,11 @@ def plate_model():
     freqs = mu * np.sqrt(params["D"] / (params["rho"] * params["H"])) / (2 * np.pi * params["size"] ** 2)
     return freqs, gains[0], gains[1], gains[2]
 
+# create distribution matrix for nonlinear mode coupling using frequency proximity and the parameters 
+# eta, tau and lambda. coupled filter formulation Eq. 20 and Eq. 26from Poirot et al, 2023 
 def distribution_matrix(freqs):
     diff = np.abs(freqs[:, None] - freqs[None, :])
     a = 1.0 - diff / np.mean(freqs)
-    np.fill_diagonal(a, 0.0)
     denom = a.sum(axis=0, keepdims=True)
     denom[denom == 0] = 1.0
     return np.ascontiguousarray(
@@ -60,6 +84,9 @@ def distribution_matrix(freqs):
         dtype=np.float64,
     )
 
+# build runtime parameters from current parameters (freqs, strike, left/right pickup), calculates 
+# damping factors and frequency factors for each mode and creates distribution matrix
+# uses Eq. 5, Eq 25 from Poirot et al, 2023
 def build_runtime():
     freqs, strike, left, right = plate_model()
     n = int(params["modes"])
@@ -77,6 +104,7 @@ def build_runtime():
         np.ascontiguousarray(right, dtype=np.float64),
     )
 
+# generates excitation signal for strike position, uses Eq. 24 from Poirot et al, 2023
 def excitation_signal(pos, gains):
     u = np.zeros_like(pos, dtype=np.float64)
     inside = pos < params["N_ex"]
@@ -86,51 +114,65 @@ def excitation_signal(pos, gains):
     )
     return np.ascontiguousarray(gains[:, None] * u[None, :])
 
+# process modal filter bank sample by sample, compute excess
 @njit(cache=True, fastmath=True)
 def process_block(states, Z, M, u, left, right, tau, max_state_mag, out):
 
     n = len(states)
+
+    # temp. buffers for excess power above threshold and power transfer to other modes
     rectified = np.empty(n)
     T = np.empty(n)
 
+    # process each sample in block
     for i in range(u.shape[1]):
+
+        # compute modal power and keep only amount above threshold, Eq. 18 from Poirot et al, 2023
         for k in range(n):
             zr, zi = states[k].real, states[k].imag
             r = 0.5 * (zr * zr + zi * zi) - tau
             rectified[k] = r if r > 0.0 else 0.0
 
+        # distribute excess power to other modes using distribution matrix
         for k in range(n):
             acc = 0.0
             for j in range(n):
                 acc += M[k, j] * rectified[j]
-            T[k] = acc if acc > 0.0 else 0.0
+            T[k] = acc #if acc > 0.0 else 0.0
 
+        # update modal states using Eq. 12 from Poirot et al, 2023
         for k in range(n):
             zr, zi = states[k].real, states[k].imag
             mag2 = zr * zr + zi * zi
 
+            # change mode amplitude with transferred energy, if-clause used for initially silent mode
             if mag2 < 1e-20:
-                new_z = np.sqrt(2.0 * T[k]) * Z[k] + u[k, i]
+                new_z = np.sqrt(max(2.0 * T[k], 0.0)) * Z[k] + u[k, i]
             else:
-                new_z = np.sqrt(1.0 + 2.0 * T[k] / mag2) * Z[k] * states[k] + u[k, i]
+                scale2 = 1.0 + 2.0 * T[k] / mag2
+                scale2 = max(scale2, 0.0)  # numerical safety
+                new_z = np.sqrt(scale2) * Z[k] * states[k] + u[k, i]
 
+            # additional clamp to avoid exploding states from nonlinear mode coupling
             mag = np.sqrt(new_z.real ** 2 + new_z.imag ** 2)
             if mag > max_state_mag:
-                new_z = max_state_mag * np.tanh(mag / max_state_mag) / mag
+                new_z *= max_state_mag * np.tanh(mag / max_state_mag) / mag
             states[k] = new_z
 
+        # compute output for left/right pickup positions
         l = r = 0.0
         for k in range(n):
             value = states[k].imag
             l += left[k] * value
             r += right[k] * value
 
+        # write output to stereo buffer
         out[i, 0], out[i, 1] = l, r
 
+# Init modal filter bank, build current runtime parameters and process a dummy block to precompile Numba 
+# before actual audio starts
 states = np.zeros(n_Modes, dtype=np.complex128)
-
 runtime = build_runtime()
-
 _, Z0, M0, strike0, left0, right0 = runtime
 
 process_block(
@@ -143,37 +185,48 @@ process_block(
 
 print("Numba-Kernel kompiliert.")
 
+# 
 def callback(outdata, frames, time, status):
     global runtime
 
+    # print warnings
     if status:
         print(status)
 
+    # rebuild runtime parameters if parameter change
     if params["changed"]:
         runtime = build_runtime()
         params["changed"] = False
 
     _, Z, M, strike, left, right = runtime
 
+    # number of modes in use
     n = len(Z)
+
+    # sample indices of current audio block
     pos = callback.pos + np.arange(frames)
 
+    # generate excitation for current block
     u = (
         np.zeros((n, frames), dtype=np.float64)
         if params["impact_start"] is None
         else excitation_signal(pos - params["impact_start"], strike)
     )
 
+    # stereo output buffer for current block
     out = np.empty((frames, 2))
 
+    # run realtime filter bank, update states and compute left/right output for current block
     process_block(
         states[:n], Z, M, u,
         left, right,
         params["tau"], MAX_STATE_MAG, out,
     )
 
+    # advance sample position 
     callback.pos += frames
 
+    # normalize output, replace NaN/Inf values with 0 and clip to output range [-1, 1] 
     out = np.nan_to_num(
         out / np.sqrt(n),
         nan=0.0,
@@ -183,7 +236,12 @@ def callback(outdata, frames, time, status):
 
     outdata[:] = np.clip(out, -1.0, 1.0)
 
+# sample counter for strike timing
 callback.pos = 0
+
+############
+# GUI Part #
+############
 
 root = Tk()
 root.title("Resonator Filter GUI (Numba)")
@@ -271,6 +329,7 @@ def set_point(event, x_name, y_name):
         params["changed"] = True
         draw()
 
+
 def add_slider(label, name, lo, hi, model_param=True):
     ttk.Label(root, text=label).pack()
 
@@ -306,7 +365,7 @@ add_slider("Damping Tilt", "alpha_r", 0.0, 0.01)
 
 add_slider("NonLin Threshold Tau", "tau", 0.0001, 2.0)
 add_slider("NonLin Odd Coupling Strength Eta", "eta", 0.0, 0.8)
-add_slider("NonLin Coupling StrengthLambda", "lamb", 0.0001, 10)
+add_slider("NonLin Coupling StrengthLambda", "lamb", 0.0001, 1)
 
 add_slider("Excitation Length", "N_ex", 2, 192, False)
 add_slider("Excitation Gain", "A", 0.0, 2.0, False)

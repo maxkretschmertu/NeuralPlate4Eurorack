@@ -4,20 +4,24 @@ from scipy.sparse.linalg import eigsh
 from skfem import MeshTri, Basis, ElementTriMorley, BilinearForm, asm
 from skfem.helpers import dd, ddot, trace
 
-POISSON = 0.3
+# This file converts plate contour geomety into a FEM mesh, solves the eigenvalue problem and
+# evaluates resulting mode shapes at sample points. outputs reference frequency factors and gains 
+# at sample points to be used in training the NN.
 
+POISSON = 0.3           # Poisson ratio used in thin plate model
 
+# mass form for the FEM
 @BilinearForm
 def mass(u, v, w):
     return u * v
 
-
+# stiffness form for the FEM
 @BilinearForm
 def stiffness(u, v, w):
     Hu, Hv = dd(u), dd(v)
     return (1 - POISSON) * ddot(Hu, Hv) + POISSON * trace(Hu) * trace(Hv)
 
-
+# takes border contour of plate geometry and generates FEM mesh using skfem MeshTri
 def mesh_from_contour(contour, max_area=0.00025):
     vertices = np.asarray(contour, dtype=np.float64)
     if len(vertices) > 1 and np.allclose(vertices[0], vertices[-1]):
@@ -35,6 +39,7 @@ def mesh_from_contour(contour, max_area=0.00025):
 
 
 def solve_plate(mesh, points, n_modes=32):
+    # build FEM basis and assemble mass and stiffness matrices
     basis = Basis(mesh, ElementTriMorley())
     K, M = asm(stiffness, basis), asm(mass, basis)
 
@@ -42,6 +47,7 @@ def solve_plate(mesh, points, n_modes=32):
     free = np.setdiff1d(np.arange(basis.N), fixed)
     Mf = M[free][:, free]
 
+    # solve eigenvalue problem, sort modes ascending and normalize
     values, modes = eigsh(K[free][:, free], k=n_modes, M=Mf, sigma=0.0, which="LM")
     order = np.argsort(values)
     values, modes = values[order], modes[:, order]
@@ -49,12 +55,16 @@ def solve_plate(mesh, points, n_modes=32):
 
     full = np.zeros((basis.N, n_modes))
     full[free] = modes
+
+    # evaluate modes at sample points and compute gains
     gains = np.asarray(basis.probes(np.asarray(points).T) @ full)
 
+    # compute plate area
     t = mesh.p[:, mesh.t]
     area = 0.5 * np.abs(
         (t[0, 1] - t[0, 0]) * (t[1, 2] - t[1, 0])
         - (t[0, 2] - t[0, 0]) * (t[1, 1] - t[1, 0])
     ).sum()
 
+    # output frequency factors and gains
     return np.sqrt(values) * area, gains
