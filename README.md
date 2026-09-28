@@ -13,7 +13,8 @@ The project combines:
 
 The current implementation is a Python prototype intended as the basis for a future Eurorack implementation. It is heavily based on the filte rbank approach proposed by Poirot et al. (2023) (HAL-04154118).
 
-To test the application, install requirements.txt and run filter_resonator_plate_nn_v15.py. To change pickup positions, use left- and rightclick. To change strike position, use shift + leftclick. 
+To test the application, install requirements.txt and run filter_resonator_plate_nn_v15.py. 
+To change pickup positions, use leftclick for left channel, alt/option-leftclick for right channel and shift-leftclick for strike position.
 For generating your own dataset and model, look into /neural and use generate_dataset.py and train.py. 
 
 ---
