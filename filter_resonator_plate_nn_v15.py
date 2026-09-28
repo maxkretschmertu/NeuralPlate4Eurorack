@@ -249,7 +249,7 @@ canvas_size = 300
 
 ttk.Label(
     root,
-    text="Left: strike | Right: pickup L | Middle / Shift+Right: pickup R",
+    text="leftclick: pickup l | alt/option-leftclick: pickup r | shift-leftclick: strike",
 ).pack()
 
 canvas = Canvas(
