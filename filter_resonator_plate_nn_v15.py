@@ -21,7 +21,7 @@ params = {
     "morph": 0.0,           # morphs between square, circle, triangle
 
     "alpha_g": 0.3322,      # damping factor
-    "alpha_r": 0.0001,        # damping tilt (higher f are damped stronger)
+    "alpha_r": 4e-5,        # damping tilt (higher f are damped stronger)
 
     "tau": 1.0,             # nonlinearity threshold (higher means less nonlinearities)
     "eta": 0.01,            # mode coupling
@@ -361,7 +361,7 @@ add_slider("Morph", "morph", 0.0, 1.0)
 add_slider("Shape", "aspect", 0.5, 4.0)
 
 add_slider("Damping", "alpha_g", 0.0000000001, 5.0)
-add_slider("Damping Tilt", "alpha_r", 0.0, 0.01)
+add_slider("Damping Tilt", "alpha_r", 0.0001, 0.01)
 
 add_slider("NonLin Threshold Tau", "tau", 0.0001, 2.0)
 add_slider("NonLin Odd Coupling Strength Eta", "eta", 0.0, 0.8)
