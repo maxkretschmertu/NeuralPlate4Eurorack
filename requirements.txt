@@ -1,0 +1,8 @@
+numpy
+scipy
+torch
+numba
+sounddevice
+scikit-image
+scikit-fem
+triangle
