@@ -21,7 +21,7 @@ params = {
     "morph": 0.0,           # morphs between square, circle, triangle
 
     "alpha_g": 0.3322,      # damping factor
-    "alpha_r": 4e-5,        # damping tilt (higher f are damped stronger)
+    "alpha_r": 0.0001,        # damping tilt (higher f are damped stronger)
 
     "tau": 1.0,             # nonlinearity threshold (higher means less nonlinearities)
     "eta": 0.01,            # mode coupling
