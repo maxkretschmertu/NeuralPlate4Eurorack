@@ -384,17 +384,17 @@ s = Scale(
 s.set(params["modes"])
 s.pack(fill="x")
 
-canvas.bind("<Button-1>", lambda e: set_point(e, "x_e", "y_e"))
-canvas.bind("<B1-Motion>", lambda e: set_point(e, "x_e", "y_e"))
+# Left click / drag: move left pickup
+canvas.bind("<Button-1>", lambda e: set_point(e, "x_l", "y_l"))
+canvas.bind("<B1-Motion>", lambda e: set_point(e, "x_l", "y_l"))
 
-canvas.bind("<Button-3>", lambda e: set_point(e, "x_l", "y_l"))
-canvas.bind("<B3-Motion>", lambda e: set_point(e, "x_l", "y_l"))
+# Right click / drag: move right pickup
+canvas.bind("<Button-3>", lambda e: set_point(e, "x_r", "y_r"))
+canvas.bind("<B3-Motion>", lambda e: set_point(e, "x_r", "y_r"))
 
-canvas.bind("<Button-2>", lambda e: set_point(e, "x_r", "y_r"))
-canvas.bind("<B2-Motion>", lambda e: set_point(e, "x_r", "y_r"))
-
-canvas.bind("<Shift-Button-3>", lambda e: set_point(e, "x_r", "y_r"))
-canvas.bind("<Shift-B3-Motion>", lambda e: set_point(e, "x_r", "y_r"))
+# Shift + left click / drag: move strike position
+canvas.bind("<Shift-Button-1>", lambda e: set_point(e, "x_e", "y_e"))
+canvas.bind("<Shift-B1-Motion>", lambda e: set_point(e, "x_e", "y_e"))
 
 draw()
 
