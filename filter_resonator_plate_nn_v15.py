@@ -385,17 +385,20 @@ s.set(params["modes"])
 s.pack(fill="x")
 
 # Left click / drag: move left pickup
-canvas.bind("<Button-1>", lambda e: set_point(e, "x_l", "y_l"))
-canvas.bind("<B1-Motion>", lambda e: set_point(e, "x_l", "y_l"))
+canvas.bind("<Button-1>", lambda e: set_point(e, "x_e", "y_e"))
+canvas.bind("<B1-Motion>", lambda e: set_point(e, "x_e", "y_e"))
 
 # Right click / drag: move right pickup
-canvas.bind("<Button-3>", lambda e: set_point(e, "x_r", "y_r"))
-canvas.bind("<B3-Motion>", lambda e: set_point(e, "x_r", "y_r"))
+canvas.bind("<Option-Button-1>", lambda e: set_point(e, "x_r", "y_r"))
+canvas.bind("<Option-B1-Motion>", lambda e: set_point(e, "x_r", "y_r"))
+
+# Right click / drag: move right pickup
+canvas.bind("<Alt-Button-1>", lambda e: set_point(e, "x_r", "y_r"))
+canvas.bind("<Alt-B1-Motion>", lambda e: set_point(e, "x_r", "y_r"))
 
 # Shift + left click / drag: move strike position
-canvas.bind("<Shift-Button-1>", lambda e: set_point(e, "x_e", "y_e"))
-canvas.bind("<Shift-B1-Motion>", lambda e: set_point(e, "x_e", "y_e"))
-
+canvas.bind("<Shift-Button-1>", lambda e: set_point(e, "x_l", "y_l"))
+canvas.bind("<Shift-B1-Motion>", lambda e: set_point(e, "x_l", "y_l"))
 draw()
 
 print("Initial frequencies:", np.round(runtime[0], 2))
