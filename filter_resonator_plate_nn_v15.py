@@ -14,6 +14,7 @@ from neural.shapes import make_morph_contour
 fs = 48000.0                # samplerate
 n_Modes = 256               # max. number of modes
 MAX_STATE_MAG = 10.0        # used to clamp mag to avoid exploding nonlineary modecpouling
+COUPLING_SPAN = 5.0         # frequency proximity for mode coupling
 
 params = {
     "size": 1.0,            # determines size/tune of plate
@@ -24,7 +25,7 @@ params = {
     "alpha_r": 4e-5,        # damping tilt (higher f are damped stronger)
 
     "tau": 1.0,             # nonlinearity threshold (higher means less nonlinearities)
-    "eta": 0.01,            # nonlinearity transfer efficiency
+    "eta": 0.01,            # mode coupling
     "lamb": 0.01,           # nonlinearity coupling strength
 
     "D": 18300.0,           # Material Parameters
@@ -75,12 +76,42 @@ def plate_model():
 # create distribution matrix for nonlinear mode coupling using frequency proximity and the parameters 
 # eta, tau and lambda. coupled filter formulation Eq. 20 and Eq. 26from Poirot et al, 2023 
 def distribution_matrix(freqs):
-    diff = np.abs(freqs[:, None] - freqs[None, :])
-    a = 1.0 - diff / np.mean(freqs)
-    denom = a.sum(axis=0, keepdims=True)
-    denom[denom == 0] = 1.0
+    gaps = np.diff(freqs)
+    valid_gaps = gaps[gaps > 1e-12]
+
+    if len(valid_gaps) > 0:
+        modal_spacing = np.median(valid_gaps)
+    else:
+        modal_spacing = 1.0
+
+    delta_f = COUPLING_SPAN * modal_spacing
+    diff = np.abs(
+        freqs[:, None] - freqs[None, :]
+    )
+
+    a = np.maximum(
+        1.0 - diff / delta_f,
+        0.0,
+    )
+
+    denom = a.sum(
+        axis=0,
+        keepdims=True,
+    )
+
+    denom[denom == 0.0] = 1.0
+
+    M = (
+        params["eta"]
+        * params["lamb"]
+        * a
+        / denom
+        - params["lamb"]
+        * np.eye(len(freqs))
+    )
+
     return np.ascontiguousarray(
-        params["eta"] * params["lamb"] * a / denom - params["lamb"] * np.eye(len(freqs)),
+        M,
         dtype=np.float64,
     )
 
@@ -364,8 +395,8 @@ add_slider("Damping", "alpha_g", 0.0000000001, 5.0)
 add_slider("Damping Tilt", "alpha_r", 0.0001, 0.01)
 
 add_slider("NonLin Threshold Tau", "tau", 0.0001, 2.0)
-add_slider("NonLin Transfer Efficiency Eta", "eta", 0.0, 0.8)
-add_slider("NonLin Coupling Strength Lambda", "lamb", 0.0001, 1)
+add_slider("NonLin Odd Coupling Strength Eta", "eta", 0.0, 0.8)
+add_slider("NonLin Coupling StrengthLambda", "lamb", 0.0001, 1)
 
 add_slider("Excitation Length", "N_ex", 2, 192, False)
 add_slider("Excitation Gain", "A", 0.0, 2.0, False)
@@ -384,21 +415,19 @@ s = Scale(
 s.set(params["modes"])
 s.pack(fill="x")
 
-# Left click / drag: move left pickup
 canvas.bind("<Button-1>", lambda e: set_point(e, "x_e", "y_e"))
 canvas.bind("<B1-Motion>", lambda e: set_point(e, "x_e", "y_e"))
 
-# Right click / drag: move right pickup
 canvas.bind("<Option-Button-1>", lambda e: set_point(e, "x_r", "y_r"))
 canvas.bind("<Option-B1-Motion>", lambda e: set_point(e, "x_r", "y_r"))
 
-# Right click / drag: move right pickup
 canvas.bind("<Alt-Button-1>", lambda e: set_point(e, "x_r", "y_r"))
 canvas.bind("<Alt-B1-Motion>", lambda e: set_point(e, "x_r", "y_r"))
 
-# Shift + left click / drag: move strike position
 canvas.bind("<Shift-Button-1>", lambda e: set_point(e, "x_l", "y_l"))
 canvas.bind("<Shift-B1-Motion>", lambda e: set_point(e, "x_l", "y_l"))
+
+
 draw()
 
 print("Initial frequencies:", np.round(runtime[0], 2))
